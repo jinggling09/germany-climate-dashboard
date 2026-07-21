@@ -17,11 +17,14 @@
   .wrap{max-width:1000px;margin:0 auto;}
   h1{font-size:26px;margin:0 0 4px;display:flex;align-items:center;gap:10px;}
   .sub{color:var(--muted);font-size:14px;margin:0 0 24px;}
-  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;}
-  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;}
-  .kpi .v{font-size:26px;font-weight:700;letter-spacing:-.5px;}
-  .kpi .l{color:var(--muted);font-size:12px;margin-top:4px;line-height:1.35;}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin-bottom:28px;}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
+  .kpi .eb{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+  .kpi .v{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1;}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:5px;line-height:1.35;}
   .kpi .v small{font-size:14px;font-weight:600;color:var(--muted);}
+  .kpi.goal{background:var(--card2);}
+  .kpi.goal .eb{color:var(--accent);}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 20px 22px;margin-bottom:22px;}
   .card h2{font-size:16px;margin:0 0 2px;}
   .card p.cap{color:var(--muted);font-size:12.5px;margin:0 0 16px;line-height:1.45;}
@@ -105,17 +108,25 @@ function render(){
   document.getElementById('trendrange').textContent = yt[0] + '–' + (D.targets[D.targets.length-1].year);
   document.getElementById('sektorrange').textContent = D.years_sector[0] + '–' + D.years_sector[D.years_sector.length-1];
 
-  document.getElementById('kpis').innerHTML =
-    kpi(fmtDE(lastVal) + ' <small>Mt</small>', 'THG-Emissionen ' + lastLabel + ' (CO₂-Äq., ohne LULUCF)') +
-    kpi('−' + redPct.toFixed(1).replace('.',',') + ' %', 'gegenüber ' + yt[0] + ' (' + fmtDE(baseVal) + ' Mt)') +
-    kpi('−65 %', 'gesetzliches Ziel bis 2030 (≈' + D.targets[0].value + ' Mt)') +
-    kpi('' + D.targets[D.targets.length-1].year, 'Netto-Klimaneutralität (KSG)');
+  const ebLast = D.preliminary_last ? (lastYear + ' · vorläufig') : ('' + lastYear);
+  const cards = [
+    kpiCard(ebLast, fmtDE(lastVal) + ' <small>Mt</small>', 'THG gesamt (CO₂-Äq., ohne LULUCF)', false),
+    kpiCard('ggü. ' + yt[0], '−' + redPct.toFixed(1).replace('.', ',') + ' %', 'Rückgang (von ' + fmtDE(baseVal) + ' Mt)', false)
+  ];
+  D.targets.forEach(t => {
+    const r = Math.round((1 - t.value / baseVal) * 100);
+    if (t.value === 0) cards.push(kpiCard('Ziel ' + t.year, 'Netto-0', 'Klimaneutralität (KSG)', true));
+    else cards.push(kpiCard('Ziel ' + t.year, '−' + r + ' %', '≈ ' + fmtDE(t.value) + ' Mt', true));
+  });
+  document.getElementById('kpis').innerHTML = cards.join('');
 
   buildTrend();
   buildSektor();
   buildDonut();
 }
-function kpi(v,l){ return '<div class="kpi"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+function kpiCard(eb, v, l, goal){
+  return '<div class="kpi' + (goal ? ' goal' : '') + '"><div class="eb">' + eb + '</div><div class="v">' + v + '</div><div class="l">' + l + '</div></div>';
+}
 
 function buildTrend(){
   const yt = D.years_total.map(String);
