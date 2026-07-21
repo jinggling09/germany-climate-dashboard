@@ -35,30 +35,26 @@
   footer a{color:var(--accent);text-decoration:none;}
   .pill{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:20px;
     padding:3px 11px;font-size:11.5px;color:var(--muted);margin-right:6px;}
+  #err{color:#fca5a5;font-size:13px;}
   @media(max-width:720px){.kpis{grid-template-columns:repeat(2,1fr);}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>🇩🇪 Deutschland — Klima-Dashboard</h1>
-  <p class="sub">Treibhausgasemissionen, Zielpfad & Sektortrends · Quelle: Umweltbundesamt (UBA)</p>
+  <p class="sub">Treibhausgasemissionen, Zielpfad & Sektortrends · Quelle: Umweltbundesamt (UBA) · <span id="updated"></span></p>
 
-  <div class="kpis">
-    <div class="kpi"><div class="v">649 <small>Mt</small></div><div class="l">THG-Emissionen 2024 (CO₂-Äq., ohne LULUCF)</div></div>
-    <div class="kpi"><div class="v">−48,2 %</div><div class="l">gegenüber 1990 (1.253 Mt)</div></div>
-    <div class="kpi"><div class="v">−65 %</div><div class="l">gesetzliches Ziel bis 2030 (≈438 Mt)</div></div>
-    <div class="kpi"><div class="v">2045</div><div class="l">Netto-Klimaneutralität (KSG)</div></div>
-  </div>
+  <div class="kpis" id="kpis"></div>
 
   <div class="card">
-    <h2>Emissionsverlauf 1990–2045</h2>
-    <p class="cap">Gesamte Treibhausgasemissionen (Mt CO₂-Äq., ohne LULUCF). Durchgezogen = Ist-Werte (UBA-Inventar), gestrichelt = gesetzlicher Zielpfad. 2025 vorläufig.</p>
+    <h2>Emissionsverlauf <span id="trendrange"></span></h2>
+    <p class="cap">Gesamte Treibhausgasemissionen (Mt CO₂-Äq., ohne LULUCF). Durchgezogen = Ist-Werte (UBA-Inventar), gestrichelt = gesetzlicher Zielpfad.</p>
     <div class="chartbox"><canvas id="trend"></canvas></div>
   </div>
 
   <div class="card">
-    <h2>Sektortrend 1990–2024 <span class="pill">nach KSG-Sektor</span></h2>
-    <p class="cap">Klick auf die Legende blendet Sektoren ein/aus. Sichtbar: die <b>Energiewirtschaft</b> bricht ein (475→190 Mt), während <b>Verkehr</b> seit 1990 praktisch unverändert ist (~145 Mt) und <b>Gebäude</b> nur langsam sinken — die eigentlichen Sorgenkinder.</p>
+    <h2>Sektortrend <span id="sektorrange"></span> <span class="pill">nach KSG-Sektor</span></h2>
+    <p class="cap">Klick auf die Legende blendet Sektoren ein/aus. Sichtbar: die <b>Energiewirtschaft</b> bricht ein, während <b>Verkehr</b> seit 1990 praktisch unverändert ist und <b>Gebäude</b> nur langsam sinken.</p>
     <div class="toggle">
       <button id="btnAbs" class="active" onclick="setMode('abs')">Absolut (Mt)</button>
       <button id="btnPct" onclick="setMode('pct')">Anteil (%)</button>
@@ -74,73 +70,100 @@
   </div>
 
   <footer>
-    <b>Datenquellen:</b> Umweltbundesamt (UBA), Nationale Treibhausgas-Inventare 1990–2024 (Stand 03/2026) sowie UBA DataCube,
-    Datenfluss <code>DF_CLIMATE_EMISSIONS_GHG_TRENDS_KSG</code> (V2026.1). Zielwerte nach Bundes-Klimaschutzgesetz (KSG).<br>
+    <b>Datenquelle:</b> Umweltbundesamt (UBA), Nationale Treibhausgas-Inventare, DataCube
+    <code>DF_CLIMATE_EMISSIONS_GHG_TRENDS_KSG</code> (<span id="ver"></span>). Zielwerte nach Bundes-Klimaschutzgesetz (KSG).<br>
     Lizenz: <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank">Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0)</a>.
-    Werte gerundet auf Mt CO₂-Äq.; 2025 vorläufig.
+    Werte gerundet auf Mt CO₂-Äq.; automatisch aktualisiert. <span id="err"></span>
   </footer>
 </div>
 
 <script>
 const C = {energie:'#7c8797',industrie:'#ef4444',gebaeude:'#b45309',verkehr:'#3b82f6',landw:'#22c55e',abfall:'#eab308',ziel:'#f59e0b',ink:'#e8eef5',muted:'#93a4b8',grid:'rgba(255,255,255,.06)'};
+const SC = {'Energiewirtschaft':C.energie,'Industrie':C.industrie,'Gebäude':C.gebaeude,'Verkehr':C.verkehr,'Landwirtschaft':C.landw,'Abfallwirtschaft & Sonstiges':C.abfall};
 Chart.defaults.color = C.muted;
 Chart.defaults.font.family = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
 Chart.defaults.font.size = 12;
+let D, sektorChart, donutChart, donutYear;
+window._mode = 'abs';
 
-/* ---------- 1. Trend 1990–2045 ---------- */
-const yrs = ['1990','1991','1992','1993','1994','1995','1996','1997','1998','1999','2000','2001','2002','2003','2004','2005','2006','2007','2008','2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019','2020','2021','2022','2023','2024','2025','2030','2040','2045'];
-const ist = [1253,1206,1158,1148,1131,1123,1140,1105,1080,1046,1043,1057,1037,1031,1011,989,1002,964,965,901,933,908,917,937,895,899,899,886,850,798,731,763,749,670,650,649,null,null,null];
-const ziel = new Array(yrs.length).fill(null);
-ziel[34]=650; ziel[36]=438; ziel[37]=150; ziel[38]=0;
+fetch('data.json?_=' + Date.now())
+  .then(r => r.json())
+  .then(data => { D = data; render(); })
+  .catch(e => { document.getElementById('err').textContent = 'Daten konnten nicht geladen werden: ' + e; });
 
-new Chart(document.getElementById('trend'),{
-  type:'line',
-  data:{labels:yrs,datasets:[
-    {label:'Ist-Emissionen',data:ist,borderColor:C.verkehr,backgroundColor:'rgba(59,130,246,.12)',
-     fill:true,tension:.25,pointRadius:2,pointHoverRadius:5,borderWidth:2.5},
-    {label:'Zielpfad (KSG)',data:ziel,borderColor:C.ziel,borderDash:[6,5],spanGaps:true,
-     fill:false,tension:0,pointRadius:4,pointHoverRadius:6,borderWidth:2.5,pointBackgroundColor:C.ziel}
-  ]},
-  options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
-    plugins:{legend:{labels:{usePointStyle:true,boxWidth:8}},
-      tooltip:{callbacks:{label:c=>c.parsed.y==null?null:`${c.dataset.label}: ${c.parsed.y} Mt`}}},
-    scales:{
-      x:{grid:{color:C.grid},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-      y:{grid:{color:C.grid},title:{display:true,text:'Mt CO₂-Äq.'},beginAtZero:true}}}
-});
+function fmtDE(n){ return n.toLocaleString('de-DE'); }
 
-/* ---------- 2. Sektortrend gestapelt 1990–2024 ---------- */
-const syr = ['1990','1991','1992','1993','1994','1995','1996','1997','1998','1999','2000','2001','2002','2003','2004','2005','2006','2007','2008','2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019','2020','2021','2022','2023','2024'];
-const S = {
-  Energiewirtschaft:[475,460,436,426,420,407,413,391,391,380,391,401,401,417,412,403,403,406,388,362,373,368,380,384,363,352,346,327,312,259,220,248,258,205,190],
-  Industrie:[278,252,241,231,235,237,226,230,213,203,202,192,190,189,189,186,191,199,196,170,184,182,177,177,176,183,187,192,185,179,172,180,164,150,150],
-  'Gebäude':[210,208,190,197,186,188,211,198,190,173,167,187,174,164,152,151,161,122,147,137,145,125,130,140,119,125,124,123,118,123,122,118,111,102,100],
-  Verkehr:[163,166,172,176,172,176,176,176,179,185,181,177,174,167,167,161,162,152,152,151,152,154,152,156,158,161,164,167,163,164,146,147,148,144,144],
-  Landwirtschaft:[86,76,75,74,75,75,76,74,74,74,73,73,72,69,69,68,68,68,68,68,68,68,68,69,71,70,70,69,66,66,65,64,62,63,61],
-  'Abfallwirtschaft & Sonstiges':[42,43,44,43,42,41,39,36,33,31,30,28,26,24,21,20,18,16,15,13,12,11,10,10,9,8,8,8,7,7,6,6,6,5,5]
-};
-const SC = {Energiewirtschaft:C.energie,Industrie:C.industrie,'Gebäude':C.gebaeude,Verkehr:C.verkehr,Landwirtschaft:C.landw,'Abfallwirtschaft & Sonstiges':C.abfall};
-const totals = syr.map((_,i)=>Object.values(S).reduce((a,arr)=>a+arr[i],0));
-function mkData(mode){
-  return Object.keys(S).map(k=>({
+function render(){
+  const yt = D.years_total, tot = D.total;
+  const lastVal = tot[tot.length-1], lastYear = yt[yt.length-1];
+  const baseVal = tot[0];
+  const redPct = (1 - lastVal/baseVal) * 100;
+  const lastLabel = D.preliminary_last ? (lastYear + ' vorl.') : ('' + lastYear);
+
+  document.getElementById('updated').textContent = 'Stand ' + D.updated;
+  document.getElementById('ver').textContent = D.source_version;
+  document.getElementById('trendrange').textContent = yt[0] + '–' + (D.targets[D.targets.length-1].year);
+  document.getElementById('sektorrange').textContent = D.years_sector[0] + '–' + D.years_sector[D.years_sector.length-1];
+
+  document.getElementById('kpis').innerHTML =
+    kpi(fmtDE(lastVal) + ' <small>Mt</small>', 'THG-Emissionen ' + lastLabel + ' (CO₂-Äq., ohne LULUCF)') +
+    kpi('−' + redPct.toFixed(1).replace('.',',') + ' %', 'gegenüber ' + yt[0] + ' (' + fmtDE(baseVal) + ' Mt)') +
+    kpi('−65 %', 'gesetzliches Ziel bis 2030 (≈' + D.targets[0].value + ' Mt)') +
+    kpi('' + D.targets[D.targets.length-1].year, 'Netto-Klimaneutralität (KSG)');
+
+  buildTrend();
+  buildSektor();
+  buildDonut();
+}
+function kpi(v,l){ return '<div class="kpi"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+
+function buildTrend(){
+  const yt = D.years_total.map(String);
+  const targetYears = D.targets.map(t => t.year + ' (Ziel)');
+  const labels = yt.concat(targetYears);
+  const ist = D.total.concat(D.targets.map(()=>null));
+  const ziel = new Array(labels.length).fill(null);
+  ziel[yt.length-1] = D.total[D.total.length-1];
+  D.targets.forEach((t,i)=>{ ziel[yt.length + i] = t.value; });
+  new Chart(document.getElementById('trend'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'Ist-Emissionen',data:ist,borderColor:C.verkehr,backgroundColor:'rgba(59,130,246,.12)',
+       fill:true,tension:.25,pointRadius:2,pointHoverRadius:5,borderWidth:2.5},
+      {label:'Zielpfad (KSG)',data:ziel,borderColor:C.ziel,borderDash:[6,5],spanGaps:true,
+       fill:false,tension:0,pointRadius:4,pointHoverRadius:6,borderWidth:2.5,pointBackgroundColor:C.ziel}
+    ]},
+    options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{usePointStyle:true,boxWidth:8}},
+        tooltip:{callbacks:{label:c=>c.parsed.y==null?null:`${c.dataset.label}: ${fmtDE(c.parsed.y)} Mt`}}},
+      scales:{x:{grid:{color:C.grid},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
+        y:{grid:{color:C.grid},title:{display:true,text:'Mt CO₂-Äq.'},beginAtZero:true}}}
+  });
+}
+
+function sektorDatasets(mode){
+  const keys = Object.keys(D.sectors);
+  const totals = D.years_sector.map((_,i)=>keys.reduce((a,k)=>a+D.sectors[k][i],0));
+  return keys.map(k=>({
     label:k,
-    data:S[k].map((v,i)=>mode==='pct'?+(v/totals[i]*100).toFixed(1):v),
-    backgroundColor:SC[k],borderWidth:0
+    data:D.sectors[k].map((v,i)=>mode==='pct'?+(v/totals[i]*100).toFixed(1):v),
+    backgroundColor:SC[k]||'#888',borderWidth:0
   }));
 }
-const sektorChart = new Chart(document.getElementById('sektor'),{
-  type:'bar',
-  data:{labels:syr,datasets:mkData('abs')},
-  options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
-    plugins:{legend:{labels:{usePointStyle:true,boxWidth:8}},
-      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}${window._mode==='pct'?' %':' Mt'}`}}},
-    scales:{x:{stacked:true,grid:{color:C.grid},ticks:{autoSkip:true,maxTicksLimit:12,maxRotation:0}},
-      y:{stacked:true,grid:{color:C.grid},beginAtZero:true,title:{display:true,text:'Mt CO₂-Äq.'}}}}
-});
-window._mode='abs';
+function buildSektor(){
+  sektorChart = new Chart(document.getElementById('sektor'),{
+    type:'bar',
+    data:{labels:D.years_sector.map(String),datasets:sektorDatasets('abs')},
+    options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{usePointStyle:true,boxWidth:8}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}${window._mode==='pct'?' %':' Mt'}`}}},
+      scales:{x:{stacked:true,grid:{color:C.grid},ticks:{autoSkip:true,maxTicksLimit:12,maxRotation:0}},
+        y:{stacked:true,grid:{color:C.grid},beginAtZero:true,title:{display:true,text:'Mt CO₂-Äq.'}}}}
+  });
+}
 function setMode(m){
   window._mode=m;
-  sektorChart.data.datasets=mkData(m);
+  sektorChart.data.datasets=sektorDatasets(m);
   sektorChart.options.scales.y.title.text = m==='pct'?'Anteil (%)':'Mt CO₂-Äq.';
   sektorChart.options.scales.y.max = m==='pct'?100:undefined;
   sektorChart.update();
@@ -148,42 +171,33 @@ function setMode(m){
   document.getElementById('btnPct').classList.toggle('active',m==='pct');
 }
 
-/* ---------- 3. Donut nach Jahr (mit Gesamt in der Mitte) ---------- */
-const dkeys = Object.keys(S);
-const dcolors = [C.energie,C.industrie,C.gebaeude,C.verkehr,C.landw,C.abfall];
-let donutYear = '2024';
-const sel = document.getElementById('donutYear');
-syr.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;if(y===donutYear)o.selected=true;sel.appendChild(o);});
-function donutData(year){const i=syr.indexOf(year);return dkeys.map(k=>S[k][i]);}
-
-const centerText = {id:'centerText',afterDraw(chart){
-  const {ctx,chartArea:{left,right,top,bottom}} = chart;
-  const x=(left+right)/2, y=(top+bottom)/2;
-  const total = chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
-  ctx.save();
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle=C.muted; ctx.font="600 12px -apple-system,'Segoe UI',sans-serif";
-  ctx.fillText('Gesamt '+donutYear, x, y-18);
-  ctx.fillStyle=C.ink; ctx.font="700 28px -apple-system,'Segoe UI',sans-serif";
-  ctx.fillText(total+' Mt', x, y+6);
-  ctx.fillStyle=C.muted; ctx.font="11px -apple-system,'Segoe UI',sans-serif";
-  ctx.fillText('CO₂-Äq.', x, y+26);
-  ctx.restore();
-}};
-
-const donutChart = new Chart(document.getElementById('donut'),{
-  type:'doughnut',
-  data:{labels:dkeys,datasets:[{data:donutData(donutYear),backgroundColor:dcolors,borderColor:'#182534',borderWidth:2}]},
-  options:{maintainAspectRatio:false,cutout:'66%',
-    plugins:{legend:{position:'right',labels:{usePointStyle:true,boxWidth:8,padding:10}},
-      tooltip:{callbacks:{label:c=>{const t=c.dataset.data.reduce((a,b)=>a+b,0);return `${c.label}: ${c.parsed} Mt (${(c.parsed/t*100).toFixed(1)} %)`;}}}}},
-  plugins:[centerText]
-});
-sel.addEventListener('change',e=>{
-  donutYear = e.target.value;
-  donutChart.data.datasets[0].data = donutData(donutYear);
-  donutChart.update();
-});
+function buildDonut(){
+  const keys = Object.keys(D.sectors);
+  const colors = keys.map(k=>SC[k]||'#888');
+  donutYear = String(D.years_sector[D.years_sector.length-1]);
+  const sel = document.getElementById('donutYear');
+  D.years_sector.forEach(y=>{const o=document.createElement('option');o.value=String(y);o.textContent=y;if(String(y)===donutYear)o.selected=true;sel.appendChild(o);});
+  const dData = year => { const i=D.years_sector.indexOf(+year); return keys.map(k=>D.sectors[k][i]); };
+  const centerText = {id:'centerText',afterDraw(chart){
+    const {ctx,chartArea:{left,right,top,bottom}}=chart;
+    const x=(left+right)/2, y=(top+bottom)/2;
+    const total=chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle=C.muted; ctx.font="600 12px sans-serif"; ctx.fillText('Gesamt '+donutYear, x, y-18);
+    ctx.fillStyle=C.ink; ctx.font="700 28px sans-serif"; ctx.fillText(fmtDE(total)+' Mt', x, y+6);
+    ctx.fillStyle=C.muted; ctx.font="11px sans-serif"; ctx.fillText('CO₂-Äq.', x, y+26);
+    ctx.restore();
+  }};
+  donutChart = new Chart(document.getElementById('donut'),{
+    type:'doughnut',
+    data:{labels:keys,datasets:[{data:dData(donutYear),backgroundColor:colors,borderColor:'#182534',borderWidth:2}]},
+    options:{maintainAspectRatio:false,cutout:'66%',
+      plugins:{legend:{position:'right',labels:{usePointStyle:true,boxWidth:8,padding:10}},
+        tooltip:{callbacks:{label:c=>{const t=c.dataset.data.reduce((a,b)=>a+b,0);return `${c.label}: ${c.parsed} Mt (${(c.parsed/t*100).toFixed(1)} %)`;}}}}},
+    plugins:[centerText]
+  });
+  sel.addEventListener('change',e=>{ donutYear=e.target.value; donutChart.data.datasets[0].data=dData(donutYear); donutChart.update(); });
+}
 </script>
 </body>
 </html>
